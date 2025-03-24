@@ -52,6 +52,8 @@ mod mock;
 #[cfg(test)]
 mod tests;
 
+pub mod migration;
+
 // Every callable function or "dispatchable" a pallet exposes must have weight values that correctly
 // estimate a dispatchable's execution time. The benchmarking module is used to calculate weights
 // for each dispatchable and generates this pallet's weight.rs file. Learn more about benchmarking here: https://docs.substrate.io/test/benchmark/
@@ -67,10 +69,12 @@ pub mod pallet {
 	use super::*;
 	use frame_support::pallet_prelude::*;
 	use frame_system::pallet_prelude::*;
+	const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
 
 	// The `Pallet` struct serves as a placeholder to implement traits, methods and dispatchables
 	// (`Call`s) in this pallet.
 	#[pallet::pallet]
+	#[pallet::storage_version(STORAGE_VERSION)]
 	pub struct Pallet<T>(_);
 
 	/// The pallet's configuration trait.
@@ -91,7 +95,7 @@ pub mod pallet {
 	/// In this template, we are declaring a storage item called `Something` that stores a single
 	/// `u32` value. Learn more about runtime storage here: <https://docs.substrate.io/build/runtime-storage/>
 	#[pallet::storage]
-	pub type Something<T> = StorageValue<_, u32>;
+	pub type Something<T: Config> = StorageMap<_, Blake2_128Concat, T::AccountId, u32>; // TODO: change this into a different structure that needs a storage migration.
 
 	/// Events that functions in this pallet can emit.
 	///
@@ -157,7 +161,7 @@ pub mod pallet {
 			let who = ensure_signed(origin)?;
 
 			// Update storage.
-			Something::<T>::put(something);
+			Something::<T>::insert(&who, something);
 
 			// Emit an event.
 			Self::deposit_event(Event::SomethingStored { something, who });
@@ -182,7 +186,13 @@ pub mod pallet {
 		#[pallet::call_index(1)]
 		#[pallet::weight(T::WeightInfo::cause_error())]
 		pub fn cause_error(origin: OriginFor<T>) -> DispatchResult {
-			let _who = ensure_signed(origin)?;
+			let who = ensure_signed(origin)?;
+
+			let current = Something::<T>::get(&who).ok_or(Error::<T>::NoneValue)?;
+			let new = current.checked_add(1).ok_or(Error::<T>::StorageOverflow)?;
+			Something::<T>::insert(&who, new);
+			Ok(())
+			/*
 
 			// Read a value from storage.
 			match Something::<T>::get() {
@@ -197,6 +207,7 @@ pub mod pallet {
 					Ok(())
 				},
 			}
+				*/
 		}
 	}
 }
